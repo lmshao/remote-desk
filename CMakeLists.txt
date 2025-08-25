@@ -11,11 +11,11 @@ option(BUILD_STATIC_LIBS "Build static libraries" ON)
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_EXAMPLES "Build examples" ON)
 option(BUILD_TESTS "Build tests" ON)
-option(INSTALL_TO_USER_LOCAL "Install to ~/.local instead of system-wide" OFF)
+option(BUILD_PLUGINS "Build service plugins as separate .so files" OFF)
 
-# Set default build type to Release if not specified
+# Set default build type to Debug if not specified
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
+    set(CMAKE_BUILD_TYPE Debug)
 endif()
 
 # Display configuration options for developers
@@ -32,30 +32,14 @@ message(STATUS "  BUILD_STATIC_LIBS: Build static libraries (current: ${BUILD_ST
 message(STATUS "  BUILD_SHARED_LIBS: Build shared libraries (current: ${BUILD_SHARED_LIBS})")
 message(STATUS "  BUILD_EXAMPLES: Build example programs (current: ${BUILD_EXAMPLES})")
 message(STATUS "  BUILD_TESTS: Build unit tests (current: ${BUILD_TESTS})")
-message(STATUS "")
-message(STATUS "Installation Options:")
-message(STATUS "  CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
-message(STATUS "  INSTALL_TO_USER_LOCAL: Install to ~/.local (current: ${INSTALL_TO_USER_LOCAL})")
+message(STATUS "  BUILD_PLUGINS: Build service plugins (current: ${BUILD_PLUGINS})")
 message(STATUS "")
 message(STATUS "Usage Examples:")
 message(STATUS "  Debug build:     cmake -DCMAKE_BUILD_TYPE=Debug ..")
-message(STATUS "  User install:    cmake -DINSTALL_TO_USER_LOCAL=ON ..")
-message(STATUS "  Custom prefix:   cmake -DCMAKE_INSTALL_PREFIX=/opt/remote-desk ..")
 message(STATUS "  Minimal build:   cmake -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF ..")
+message(STATUS "  Plugin mode:     cmake -DBUILD_PLUGINS=ON ..")
 message(STATUS "")
 message(STATUS "=================================================================")
-
-# Handle user-local installation
-if(INSTALL_TO_USER_LOCAL AND CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-    set(CMAKE_INSTALL_PREFIX "$ENV{HOME}/.local" CACHE PATH "User local install path" FORCE)
-    message(STATUS "Installing to user directory: ${CMAKE_INSTALL_PREFIX}")
-endif()
-
-# Provide install path information to users
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-    message(STATUS "Using default install prefix: ${CMAKE_INSTALL_PREFIX}")
-    message(STATUS "You can customize it with: cmake -DCMAKE_INSTALL_PREFIX=/your/path ..")
-endif()
 
 # Enable position independent code for shared library compatibility
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -146,12 +130,19 @@ endif()
 
 # Source files and include directories
 include_directories(${PROJECT_SOURCE_DIR}/src)
-include_directories(${PROJECT_SOURCE_DIR}/src/log)
-include_directories(${PROJECT_SOURCE_DIR}/src/discovery)
+include_directories(${PROJECT_SOURCE_DIR}/src/core)
 
-# Collect Remote Desk source files (discovery module)
-file(GLOB_RECURSE DISCOVERY_SOURCES "src/discovery/*.cpp")
-set(SOURCES ${DISCOVERY_SOURCES})
+# Add all subdirectories in src to include path
+file(GLOB_RECURSE SRC_DIRS LIST_DIRECTORIES true "${PROJECT_SOURCE_DIR}/src/*")
+foreach(DIR ${SRC_DIRS})
+    if(IS_DIRECTORY ${DIR})
+        include_directories(${DIR})
+    endif()
+endforeach()
+
+# Monolithic mode: include all sources
+file(GLOB_RECURSE SOURCES "src/*.cpp")
+list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/core/main.cpp")
 
 # Validate build options
 if(NOT BUILD_STATIC_LIBS AND NOT BUILD_SHARED_LIBS)
@@ -180,16 +171,15 @@ message(STATUS "C++ flags for ${CMAKE_BUILD_TYPE}: ${CMAKE_CXX_FLAGS_${CMAKE_BUI
 find_package(Threads REQUIRED)
 
 # Print source file summary
-list(LENGTH DISCOVERY_SOURCES DISCOVERY_COUNT)
-message(STATUS "Found ${DISCOVERY_COUNT} Discovery source files")
+list(LENGTH SOURCES SOURCE_COUNT)
+message(STATUS "Found ${SOURCE_COUNT} library source files")
 
 # Static library
 if(BUILD_STATIC_LIBS)
     add_library(remote-desk_static STATIC ${SOURCES})
     
     target_include_directories(remote-desk_static PUBLIC 
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-        $<INSTALL_INTERFACE:include>
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
     
     # Link dependencies - prefer static to static linking
@@ -227,8 +217,7 @@ if(BUILD_SHARED_LIBS)
     add_library(remote-desk_shared SHARED ${SOURCES})
     
     target_include_directories(remote-desk_shared PUBLIC 
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-        $<INSTALL_INTERFACE:include>
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
     
     # Link dependencies - prefer shared to shared linking, fallback to static
@@ -307,13 +296,53 @@ if(BUILD_EXAMPLES)
     endforeach()
 endif()
 
+# Build service plugins as separate .so files
+if(BUILD_PLUGINS)
+    message(STATUS "Building service plugins...")
+    
+    # Create plugins directory
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/plugins)
+    
+    # Build each service as a separate plugin
+    foreach(PLUGIN_SOURCE ${PLUGIN_SOURCES})
+        get_filename_component(PLUGIN_NAME ${PLUGIN_SOURCE} NAME_WE)
+        
+        # Create plugin library
+        add_library(${PLUGIN_NAME}_plugin SHARED ${PLUGIN_SOURCE})
+        
+        # Set plugin properties
+        set_target_properties(${PLUGIN_NAME}_plugin PROPERTIES
+            OUTPUT_NAME ${PLUGIN_NAME}
+            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins
+            PREFIX ""  # Remove lib prefix
+        )
+        
+        # Link to main library
+        if(BUILD_SHARED_LIBS)
+            target_link_libraries(${PLUGIN_NAME}_plugin PRIVATE remote-desk_shared)
+        else()
+            target_link_libraries(${PLUGIN_NAME}_plugin PRIVATE remote-desk_static)
+        endif()
+        
+        message(STATUS "Plugin target: ${PLUGIN_NAME}_plugin -> plugins/${PLUGIN_NAME}.so")
+    endforeach()
+endif()
+
 # Build applications - Remote Desk main executable
-add_executable(remote-desk-srv src/service/main.cpp)
-target_include_directories(remote-desk-srv PRIVATE
+add_executable(remote-desk-svc src/core/main.cpp)
+target_include_directories(remote-desk-svc PRIVATE
     ${PROJECT_SOURCE_DIR}/src
 )
-target_link_libraries(remote-desk-srv PRIVATE remote-desk)
-set_target_properties(remote-desk-srv PROPERTIES
+
+# Force link all library code to ensure service auto-registration
+if(BUILD_STATIC_LIBS)
+    target_link_libraries(remote-desk-svc PRIVATE 
+        -Wl,--whole-archive remote-desk_static -Wl,--no-whole-archive
+    )
+else()
+    target_link_libraries(remote-desk-svc PRIVATE remote-desk)
+endif()
+set_target_properties(remote-desk-svc PROPERTIES
     OUTPUT_NAME remote-desk
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
@@ -330,79 +359,6 @@ if(BUILD_TESTS)
     endif()
 endif()
 
-# Installation
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
-
-# Install headers
-install(DIRECTORY src/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/remote-desk
-    FILES_MATCHING PATTERN "*.h"
-)
-
-# Install libraries
-if(BUILD_STATIC_LIBS)
-    install(TARGETS remote-desk_static
-        EXPORT remote-deskTargets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    )
-endif()
-
-if(BUILD_SHARED_LIBS)
-    install(TARGETS remote-desk_shared
-        EXPORT remote-deskTargets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    )
-endif()
-
-# Install CMake targets
-install(EXPORT remote-deskTargets
-    FILE remote-deskTargets.cmake
-    NAMESPACE remote-desk::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/remote-desk
-)
-
-# Create config file (optional, skip if template doesn't exist)
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/remote-deskConfig.cmake.in")
-    configure_package_config_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/remote-deskConfig.cmake.in
-        ${CMAKE_CURRENT_BINARY_DIR}/remote-deskConfig.cmake
-        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/remote-desk
-    )
-    
-    # Install config files
-    install(FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/remote-deskConfig.cmake
-        ${CMAKE_CURRENT_BINARY_DIR}/remote-deskConfigVersion.cmake
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/remote-desk
-    )
-endif()
-
-# Create version file
-write_basic_package_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/remote-deskConfigVersion.cmake
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-
-# Create uninstall target (optional, skip if template doesn't exist)
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in")
-    configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in
-        ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
-        @ONLY
-    )
-    
-    add_custom_target(uninstall_remote-desk
-        COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
-        COMMENT "Uninstalling Remote Desk library..."
-    )
-endif()
-
 # Print build configuration summary
 message(STATUS "")
 message(STATUS "========== Remote Desk Library Build Configuration ==========")
@@ -414,8 +370,6 @@ message(STATUS "Build static library: ${BUILD_STATIC_LIBS}")
 message(STATUS "Build shared library: ${BUILD_SHARED_LIBS}")
 message(STATUS "Build examples: ${BUILD_EXAMPLES}")
 message(STATUS "Build tests: ${BUILD_TESTS}")
-message(STATUS "Install support: ON")
-message(STATUS "Uninstall support: ON (make uninstall_remote-desk)")
+message(STATUS "Build plugins: ${BUILD_PLUGINS}")
 message(STATUS "===============================================================")
 message(STATUS "")
-

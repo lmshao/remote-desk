@@ -14,7 +14,6 @@
 #include <network/udp_server.h>
 
 #include <atomic>
-#include <functional>
 #include <memory>
 #include <string>
 #include <thread>
