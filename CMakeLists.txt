@@ -170,6 +170,14 @@ message(STATUS "C++ flags for ${CMAKE_BUILD_TYPE}: ${CMAKE_CXX_FLAGS_${CMAKE_BUI
 # Find threads (required for network operations)
 find_package(Threads REQUIRED)
 
+# Find X11 libraries for Linux screen capture
+if(UNIX AND NOT APPLE)
+    find_package(X11 REQUIRED)
+    if(X11_FOUND)
+        message(STATUS "Found X11 libraries: ${X11_LIBRARIES}")
+    endif()
+endif()
+
 # Print source file summary
 list(LENGTH SOURCES SOURCE_COUNT)
 message(STATUS "Found ${SOURCE_COUNT} library source files")
@@ -200,6 +208,11 @@ if(BUILD_STATIC_LIBS)
     endif()
     
     target_link_libraries(remote-desk_static PUBLIC Threads::Threads)
+    
+    # Link X11 libraries on Linux
+    if(UNIX AND NOT APPLE AND X11_FOUND)
+        target_link_libraries(remote-desk_static PUBLIC ${X11_LIBRARIES})
+    endif()
     
     set_target_properties(remote-desk_static PROPERTIES
         OUTPUT_NAME remote-desk
@@ -238,6 +251,11 @@ if(BUILD_SHARED_LIBS)
     endif()
     
     target_link_libraries(remote-desk_shared PUBLIC Threads::Threads)
+    
+    # Link X11 libraries on Linux
+    if(UNIX AND NOT APPLE AND X11_FOUND)
+        target_link_libraries(remote-desk_shared PUBLIC ${X11_LIBRARIES})
+    endif()
     
     set_target_properties(remote-desk_shared PROPERTIES
         OUTPUT_NAME remote-desk

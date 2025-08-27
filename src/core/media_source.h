@@ -9,8 +9,6 @@
 #ifndef LMSHAO_REMOTE_DESK_MEDIA_SOURCE_H
 #define LMSHAO_REMOTE_DESK_MEDIA_SOURCE_H
 
-#include <mutex>
-
 #include "pipeline_interfaces.h"
 
 namespace lmshao::remotedesk {
