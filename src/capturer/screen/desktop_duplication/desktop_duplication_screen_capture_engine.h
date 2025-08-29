@@ -17,15 +17,24 @@
 #include <wrl/client.h>
 
 #include <atomic>
+#include <chrono>
+#include <functional>
+#include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "../iscreen_capture_engine.h"
 
 namespace lmshao::remotedesk {
 
 /**
- * @brief Desktop Duplication API based screen capture engine
+ * @brief Desktop Duplication API based screen capture engine for Windows
+ *
+ * This class implements screen capture using Windows Desktop Duplication API,
+ * which provides efficient, low-overhead screen capture by directly accessing
+ * the desktop composition surface.
  */
 class DesktopDuplicationScreenCaptureEngine : public IScreenCaptureEngine {
 public:
@@ -74,18 +83,37 @@ private:
     std::shared_ptr<Frame> ConvertSurfaceToFrame(Microsoft::WRL::ComPtr<IDXGISurface> surface);
 
     /**
-     * @brief Cleanup resources
+     * @brief Capture cursor if enabled
+     * @param frame Frame to overlay cursor on
+     */
+    void CaptureCursor(std::shared_ptr<Frame> frame);
+
+    /**
+     * @brief Cleanup D3D and DXGI resources
      */
     void Cleanup();
 
     /**
-     * @brief Set last error message
-     * @param error Error message
+     * @brief Get screen geometry for specified monitor
+     * @param monitor_index Monitor index
+     * @param x Output X coordinate
+     * @param y Output Y coordinate
+     * @param width Output width
+     * @param height Output height
+     * @return true if successful
      */
-    void LOG_ERROR(const std::string &error);
+    bool GetScreenGeometry(uint32_t monitor_index, int &x, int &y, uint32_t &width, uint32_t &height);
+
+    /**
+     * @brief Convert Windows HRESULT to CaptureResult
+     * @param hr HRESULT to convert
+     * @param context Context string for error logging
+     * @return Corresponding CaptureResult
+     */
+    CaptureResult HResultToCaptureResult(HRESULT hr, const std::string &context);
 
 private:
-    // D3D11 resources
+    // D3D11 and DXGI resources
     Microsoft::WRL::ComPtr<ID3D11Device> d3d_device_;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3d_context_;
     Microsoft::WRL::ComPtr<IDXGIOutputDuplication> desktop_duplication_;
@@ -100,6 +128,12 @@ private:
     // Frame timing
     std::chrono::steady_clock::time_point last_frame_time_;
     std::chrono::milliseconds frame_interval_;
+
+    // Capture region
+    int capture_x_;
+    int capture_y_;
+    uint32_t capture_width_;
+    uint32_t capture_height_;
 };
 
 } // namespace lmshao::remotedesk

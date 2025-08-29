@@ -57,7 +57,7 @@ public:
         else if (frame->format == FrameFormat::RGBA32)
             format_name = "RGBA32";
 
-        printf("\rFrame %d (%dx%d) Format:%s - %lds elapsed, %zu MB", frame_count_, frame->video_info.width,
+        printf("\rFrame %d (%dx%d) Format:%s - %llds elapsed, %zu MB", frame_count_, frame->video_info.width,
                frame->video_info.height, format_name, elapsed, total_bytes_ / (1024 * 1024));
         fflush(stdout);
 
@@ -208,11 +208,11 @@ int main(int argc, char *argv[])
         // Create screen capture configuration
         ScreenCaptureConfig config;
         config.capture_cursor = true;
-        config.frame_rate = 30;       // 5 FPS for testing
+        config.frame_rate = 30;       //  FPS for testing
         config.pixel_format = "BGRA"; // Use BGRA format
 
-        // Create screen capturer with configuration
-        auto capturer = std::make_unique<ScreenCapturer>(config, ScreenCaptureEngineFactory::Technology::X11);
+        // Create screen capturer with configuration (Auto mode will select best available technology)
+        auto capturer = std::make_unique<ScreenCapturer>(config, ScreenCaptureEngineFactory::Technology::Auto);
 
         printf("Created screen capturer using technology: %s\n", capturer->GetTechnologyName().c_str());
 
@@ -238,11 +238,30 @@ int main(int argc, char *argv[])
 
         // Set up signal handler for graceful shutdown
         signal(SIGINT, signal_handler);
+        signal(SIGTERM, signal_handler);
+
+        printf("Press Ctrl-C to stop recording...\n");
 
         // Wait for frames to be captured (60 seconds or until interrupted)
         auto start = std::chrono::steady_clock::now();
+        int signal_check_count = 0;
         while (g_running) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+            // Check if we were interrupted by signal
+            if (g_interrupted) {
+                printf("Interrupted by user signal\n");
+                break;
+            }
+
+            // Force exit if signal received multiple times (emergency exit)
+            if (!g_running) {
+                signal_check_count++;
+                if (signal_check_count > 10) {
+                    printf("Force exit due to repeated signals\n");
+                    std::exit(1);
+                }
+            }
 
             auto elapsed =
                 std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count();

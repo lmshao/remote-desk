@@ -29,7 +29,7 @@ public:
     enum class Technology {
         DesktopDuplication, ///< Windows Desktop Duplication API
         X11,                ///< X11 API (Linux/Unix)
-        PipeWire,           ///< PipeWire API (Linux, future support)
+        WaylandTool,        ///< Wayland system tools (grim, gnome-screenshot, etc.)
         CoreGraphics,       ///< macOS Core Graphics (future support)
         Auto                ///< Automatically detect best available technology
     };
@@ -81,11 +81,11 @@ private:
     static std::unique_ptr<IScreenCaptureEngine> CreateX11Engine();
 
     /**
-     * @brief Create PipeWire screen capture engine
+     * @brief Create Wayland tool screen capture engine
      *
-     * @return std::unique_ptr<IScreenCaptureEngine> Pointer to PipeWire engine, or nullptr on failure
+     * @return std::unique_ptr<IScreenCaptureEngine> Pointer to Wayland tool engine, or nullptr on failure
      */
-    static std::unique_ptr<IScreenCaptureEngine> CreatePipeWireEngine();
+    static std::unique_ptr<IScreenCaptureEngine> CreateWaylandToolEngine();
 
     /**
      * @brief Create Core Graphics screen capture engine
@@ -93,6 +93,13 @@ private:
      * @return std::unique_ptr<IScreenCaptureEngine> Pointer to Core Graphics engine, or nullptr on failure
      */
     static std::unique_ptr<IScreenCaptureEngine> CreateCoreGraphicsEngine();
+
+    /**
+     * @brief Check if desktop portal is available
+     *
+     * @return bool True if desktop portal is running, false otherwise
+     */
+    static bool IsDesktopPortalAvailable();
 };
 
 } // namespace lmshao::remotedesk

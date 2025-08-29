@@ -62,12 +62,16 @@ namespace lmshao::remotedesk {
 #define LOG_WARN(fmt, ...)                                                                                             \
     printf(COLOR_YELLOW "%s [WARN] %s:%d %s() " fmt "\n" COLOR_RESET, REMOTEDESK_LOG_TIME_STR, FILENAME_, __LINE__,    \
            FUNC_NAME_, ##__VA_ARGS__)
+#define LOG_INFO(fmt, ...)                                                                                             \
+    printf(COLOR_YELLOW "%s [INFO] %s:%d %s() " fmt "\n" COLOR_RESET, REMOTEDESK_LOG_TIME_STR, FILENAME_, __LINE__,    \
+           FUNC_NAME_, ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...)                                                                                            \
     printf(COLOR_RED "%s [ERROR] %s:%d %s() " fmt "\n" COLOR_RESET, REMOTEDESK_LOG_TIME_STR, FILENAME_, __LINE__,      \
            FUNC_NAME_, ##__VA_ARGS__)
 #else
 #define LOG_DEBUG(fmt, ...)
 #define LOG_WARN(fmt, ...)
+#define LOG_INFO(fmt, ...)
 #define LOG_ERROR(fmt, ...)                                                                                            \
     printf(COLOR_RED "%s [ERROR] %s:%d %s() " fmt "\n" COLOR_RESET, REMOTEDESK_LOG_TIME_STR, FILENAME_, __LINE__,      \
            FUNC_NAME_, ##__VA_ARGS__)

@@ -36,8 +36,11 @@ message(STATUS "  BUILD_PLUGINS: Build service plugins (current: ${BUILD_PLUGINS
 message(STATUS "")
 message(STATUS "Usage Examples:")
 message(STATUS "  Debug build:     cmake -DCMAKE_BUILD_TYPE=Debug ..")
+message(STATUS "  Release build:   cmake -DCMAKE_BUILD_TYPE=Release ..")
 message(STATUS "  Minimal build:   cmake -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF ..")
 message(STATUS "  Plugin mode:     cmake -DBUILD_PLUGINS=ON ..")
+message(STATUS "")
+message(STATUS "Note: Dependencies (coreutils/network) automatically follow main project build type")
 message(STATUS "")
 message(STATUS "=================================================================")
 
@@ -54,6 +57,8 @@ else()
     set(COREUTILS_LOCAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../coreutils")
     if(EXISTS "${COREUTILS_LOCAL_DIR}/CMakeLists.txt")
         if(NOT TARGET coreutils)
+            # Dependencies automatically follow main project build type
+            message(STATUS "Building coreutils in ${CMAKE_BUILD_TYPE} mode (auto-follow)")
             add_subdirectory(../coreutils coreutils_build)
         endif()
         message(STATUS "Using local coreutils from sibling directory")
@@ -96,6 +101,8 @@ else()
     set(NETWORK_LOCAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../network")
     if(EXISTS "${NETWORK_LOCAL_DIR}/CMakeLists.txt")
         if(NOT TARGET network)
+            # Dependencies automatically follow main project build type
+            message(STATUS "Building network in ${CMAKE_BUILD_TYPE} mode (auto-follow)")
             add_subdirectory(../network network_build)
         endif()
         message(STATUS "Using local network from sibling directory")
@@ -209,6 +216,11 @@ if(BUILD_STATIC_LIBS)
     
     target_link_libraries(remote-desk_static PUBLIC Threads::Threads)
     
+    # Link DirectX libraries on Windows
+    if(WIN32)
+        target_link_libraries(remote-desk_static PUBLIC dxgi d3d11)
+    endif()
+    
     # Link X11 libraries on Linux
     if(UNIX AND NOT APPLE AND X11_FOUND)
         target_link_libraries(remote-desk_static PUBLIC ${X11_LIBRARIES})
@@ -251,6 +263,11 @@ if(BUILD_SHARED_LIBS)
     endif()
     
     target_link_libraries(remote-desk_shared PUBLIC Threads::Threads)
+    
+    # Link DirectX libraries on Windows
+    if(WIN32)
+        target_link_libraries(remote-desk_shared PUBLIC dxgi d3d11)
+    endif()
     
     # Link X11 libraries on Linux
     if(UNIX AND NOT APPLE AND X11_FOUND)
@@ -354,9 +371,17 @@ target_include_directories(remote-desk-svc PRIVATE
 
 # Force link all library code to ensure service auto-registration
 if(BUILD_STATIC_LIBS)
-    target_link_libraries(remote-desk-svc PRIVATE 
-        -Wl,--whole-archive remote-desk_static -Wl,--no-whole-archive
-    )
+    if(MSVC)
+        # Use MSVC-specific option for whole archive linking
+        target_link_libraries(remote-desk-svc PRIVATE 
+            $<LINK_LIBRARY:WHOLE_ARCHIVE,remote-desk_static>
+        )
+    else()
+        # Use GNU linker options for GCC/Clang
+        target_link_libraries(remote-desk-svc PRIVATE 
+            -Wl,--whole-archive remote-desk_static -Wl,--no-whole-archive
+        )
+    endif()
 else()
     target_link_libraries(remote-desk-svc PRIVATE remote-desk)
 endif()

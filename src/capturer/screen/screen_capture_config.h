@@ -74,16 +74,22 @@ enum class CaptureResult {
     ErrorNoDisplay,
     ErrorAccessDenied,
     ErrorTimeout,
-    ErrorUnknown
+    ErrorUnknown,
+    NotSupported,
+    AlreadyStarted,
+    AlreadyInitialized
 };
 
 /**
  * @brief Screen information structure
  */
 struct ScreenInfo {
+    uint32_t id = 0;         ///< Screen identifier
     uint32_t width;          ///< Screen width in pixels
     uint32_t height;         ///< Screen height in pixels
     uint32_t bits_per_pixel; ///< Bits per pixel
+    int32_t x = 0;           ///< X coordinate of screen
+    int32_t y = 0;           ///< Y coordinate of screen
     std::string name;        ///< Display/monitor name
     bool is_primary;         ///< Whether this is the primary display
 };

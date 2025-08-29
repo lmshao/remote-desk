@@ -27,6 +27,7 @@ enum class FrameFormat : int {
     BGR24 = 104,
     RGBA32 = 105,
     BGRA32 = 106,
+    BGRA = 106, // Alias for BGRA32
     H264 = 107,
     H265 = 108,
     VP8 = 109,
@@ -77,6 +78,17 @@ public:
         VideoFrameInfo video_info;
         AudioFrameInfo audio_info;
     };
+
+    // Convenience properties for video frames
+    uint32_t stride = 0; // Row stride for video frames
+
+    // Convenience accessors for video frames
+    uint16_t &width() { return video_info.width; }
+    const uint16_t &width() const { return video_info.width; }
+    uint16_t &height() { return video_info.height; }
+    const uint16_t &height() const { return video_info.height; }
+    uint8_t *data() { return Data(); }
+    const uint8_t *data() const { return Data(); }
 
     bool IsValid() const { return Data() != nullptr && Size() > 0; }
     bool IsVideo() const { return GetFrameType(format) == FrameFormat::VIDEO_BASE; }
