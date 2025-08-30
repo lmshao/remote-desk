@@ -135,6 +135,43 @@ else()
     endif()
 endif()
 
+# Try to find installed rtsp library, fallback to local source if not found
+find_package(rtsp QUIET)
+if(rtsp_FOUND)
+    message(STATUS "Using system-installed rtsp library")
+    set(RTSP_SOURCE "system")
+else()
+    # Check if local rtsp directory exists
+    set(RTSP_LOCAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../rtsp")
+    if(EXISTS "${RTSP_LOCAL_DIR}/CMakeLists.txt")
+        if(NOT TARGET rtsp)
+            # Dependencies automatically follow main project build type
+            message(STATUS "Building rtsp in ${CMAKE_BUILD_TYPE} mode (auto-follow)")
+            add_subdirectory(../rtsp rtsp_build)
+        endif()
+        message(STATUS "Using local rtsp from sibling directory")
+        set(RTSP_SOURCE "local")
+    else()
+        # Neither system nor local rtsp found - show helpful error
+        message(STATUS "")
+        message(STATUS "========== DEPENDENCY ERROR ==========")
+        message(FATAL_ERROR 
+            "Cannot find rtsp dependency!\n"
+            "\n"
+            "Searched locations:\n"
+            "  1. System installation (using find_package rtsp)\n"
+            "  2. Local directory: ${RTSP_LOCAL_DIR}\n"
+            "\n"
+            "Solution - Download rtsp to sibling directory:\n"
+            "\n"
+            "    cd ${CMAKE_CURRENT_SOURCE_DIR}/..\n"
+            "    git clone <rtsp-repository-url>\n"
+            "\n"
+            "After downloading, re-run: cmake .."
+        )
+    endif()
+endif()
+
 # Source files and include directories
 include_directories(${PROJECT_SOURCE_DIR}/src)
 include_directories(${PROJECT_SOURCE_DIR}/src/core)
@@ -177,6 +214,48 @@ message(STATUS "C++ flags for ${CMAKE_BUILD_TYPE}: ${CMAKE_CXX_FLAGS_${CMAKE_BUI
 # Find threads (required for network operations)
 find_package(Threads REQUIRED)
 
+# Find FFmpeg libraries for video encoding
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(FFMPEG QUIET
+        libavcodec
+        libavformat  
+        libavutil
+        libswscale
+    )
+endif()
+
+# If pkg-config fails, try to find FFmpeg manually
+if(NOT FFMPEG_FOUND)
+    find_path(AVCODEC_INCLUDE_DIR libavcodec/avcodec.h)
+    find_library(AVCODEC_LIBRARY avcodec)
+    find_path(AVFORMAT_INCLUDE_DIR libavformat/avformat.h)
+    find_library(AVFORMAT_LIBRARY avformat)
+    find_path(AVUTIL_INCLUDE_DIR libavutil/avutil.h)
+    find_library(AVUTIL_LIBRARY avutil)
+    find_path(SWSCALE_INCLUDE_DIR libswscale/swscale.h)
+    find_library(SWSCALE_LIBRARY swscale)
+    
+    if(AVCODEC_INCLUDE_DIR AND AVCODEC_LIBRARY AND
+       AVFORMAT_INCLUDE_DIR AND AVFORMAT_LIBRARY AND
+       AVUTIL_INCLUDE_DIR AND AVUTIL_LIBRARY AND
+       SWSCALE_INCLUDE_DIR AND SWSCALE_LIBRARY)
+        set(FFMPEG_FOUND TRUE)
+        set(FFMPEG_INCLUDE_DIRS ${AVCODEC_INCLUDE_DIR} ${AVFORMAT_INCLUDE_DIR} ${AVUTIL_INCLUDE_DIR} ${SWSCALE_INCLUDE_DIR})
+        set(FFMPEG_LIBRARIES ${AVCODEC_LIBRARY} ${AVFORMAT_LIBRARY} ${AVUTIL_LIBRARY} ${SWSCALE_LIBRARY})
+        message(STATUS "Found FFmpeg libraries manually")
+    else()
+        message(WARNING "FFmpeg libraries not found. Video encoding features will be disabled.")
+        message(STATUS "To install FFmpeg on Windows: Download from https://www.gyan.dev/ffmpeg/builds/")
+        message(STATUS "To install FFmpeg on Ubuntu/Debian: sudo apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev")
+        message(STATUS "To install FFmpeg on CentOS/RHEL: sudo yum install ffmpeg-devel")
+    endif()
+endif()
+
+if(FFMPEG_FOUND)
+    message(STATUS "Found FFmpeg libraries: ${FFMPEG_LIBRARIES}")
+endif()
+
 # Find X11 libraries for Linux screen capture
 if(UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
@@ -214,7 +293,21 @@ if(BUILD_STATIC_LIBS)
         target_link_libraries(remote-desk_static PUBLIC network_static)
     endif()
     
+    if(rtsp_FOUND)
+        target_link_libraries(remote-desk_static PUBLIC 
+            $<IF:$<TARGET_EXISTS:rtsp::rtsp_static>,rtsp::rtsp_static,rtsp::rtsp>
+        )
+    else()
+        target_link_libraries(remote-desk_static PUBLIC rtsp_static)
+    endif()
+    
     target_link_libraries(remote-desk_static PUBLIC Threads::Threads)
+    
+    # Link FFmpeg libraries if available
+    if(FFMPEG_FOUND)
+        target_include_directories(remote-desk_static PRIVATE ${FFMPEG_INCLUDE_DIRS})
+        target_link_libraries(remote-desk_static PUBLIC ${FFMPEG_LIBRARIES})
+    endif()
     
     # Link DirectX libraries on Windows
     if(WIN32)
@@ -262,7 +355,21 @@ if(BUILD_SHARED_LIBS)
         target_link_libraries(remote-desk_shared PUBLIC network_shared)
     endif()
     
+    if(rtsp_FOUND)
+        target_link_libraries(remote-desk_shared PUBLIC 
+            $<IF:$<TARGET_EXISTS:rtsp::rtsp_shared>,rtsp::rtsp_shared,rtsp::rtsp>
+        )
+    else()
+        target_link_libraries(remote-desk_shared PUBLIC rtsp_shared)
+    endif()
+    
     target_link_libraries(remote-desk_shared PUBLIC Threads::Threads)
+    
+    # Link FFmpeg libraries if available
+    if(FFMPEG_FOUND)
+        target_include_directories(remote-desk_shared PRIVATE ${FFMPEG_INCLUDE_DIRS})
+        target_link_libraries(remote-desk_shared PUBLIC ${FFMPEG_LIBRARIES})
+    endif()
     
     # Link DirectX libraries on Windows
     if(WIN32)
@@ -409,6 +516,8 @@ message(STATUS "Version: ${PROJECT_VERSION}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Coreutils source: ${COREUTILS_SOURCE}")
 message(STATUS "Network source: ${NETWORK_SOURCE}")
+message(STATUS "RTSP source: ${RTSP_SOURCE}")
+message(STATUS "FFmpeg support: ${FFMPEG_FOUND}")
 message(STATUS "Build static library: ${BUILD_STATIC_LIBS}")
 message(STATUS "Build shared library: ${BUILD_SHARED_LIBS}")
 message(STATUS "Build examples: ${BUILD_EXAMPLES}")

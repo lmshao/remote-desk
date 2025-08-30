@@ -10,6 +10,10 @@
 
 namespace lmshao::remotedesk {
 
+ServiceManager::ServiceManager() = default;
+
+ServiceManager::~ServiceManager() = default;
+
 void ServiceManager::Unregister(const std::string &descriptor)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -139,6 +143,21 @@ const ServiceInfo *ServiceManager::GetServiceInfo(const std::string &descriptor)
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = services_.find(descriptor);
     return it != services_.end() ? it->second.get() : nullptr;
+}
+
+void ServiceManager::SetEventCallback(const ServiceEventHandler &callback)
+{
+    std::lock_guard<std::mutex> lock(callback_mutex_);
+    event_callback_ = callback;
+    LOG_DEBUG("Event callback registered");
+}
+
+void ServiceManager::NotifyMainService(const ServiceMessage &message)
+{
+    std::lock_guard<std::mutex> lock(callback_mutex_);
+    if (event_callback_) {
+        event_callback_(message);
+    }
 }
 
 } // namespace lmshao::remotedesk

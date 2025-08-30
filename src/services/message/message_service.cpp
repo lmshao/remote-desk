@@ -54,7 +54,7 @@ void MessageService::Stop()
 
     LOG_DEBUG("Stopping MessageService");
 
-    // TODO: Cleanup HTTP server here
+    // TODO: Cleanup  server here
     // For now, just simulate shutdown
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 

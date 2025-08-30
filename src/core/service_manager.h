@@ -10,6 +10,7 @@
 #define LMSHAO_REMOTE_DESK_SERVICE_MANAGER_H
 
 #include <coreutils/singleton.h>
+#include <coreutils/task_queue.h>
 
 #include <functional>
 #include <memory>
@@ -20,6 +21,7 @@
 #include <vector>
 
 #include "../log/remote_desk_log.h"
+#include "service_message.h"
 
 namespace lmshao::remotedesk {
 
@@ -49,33 +51,78 @@ private:                                                                        
 //==============================================================================
 class ServiceBase {
 public:
-    virtual ~ServiceBase() = default;
+    virtual ~ServiceBase() { StopTaskQueue(); }
 
-    /**
-     * @brief Start service - MUST be non-blocking
-     * @return true if started successfully, false otherwise
-     * Requirements:
-     * 1. Complete initialization quickly (usually < 100ms)
-     * 2. Start background threads if long-running work is needed
-     * 3. Service should be ready when this returns
-     * 4. Support repeated calls (idempotent)
-     */
     virtual bool Start() = 0;
-
-    /**
-     * @brief Stop service - should shutdown gracefully
-     * Requirements:
-     * 1. Should be idempotent (can be called multiple times)
-     * 2. Should cleanup all resources
-     * 3. Should stop all background threads
-     */
     virtual void Stop() = 0;
+    virtual bool IsRunning() const = 0;
+
+    void SetServiceNotifier(const ServiceEventHandler &notifier) { notifier_ = notifier; }
+
+protected:
+    /**
+     * @brief Notify main service about an event (async)
+     */
+    void NotifyMainService(const ServiceMessage &message)
+    {
+        if (!notifier_ || !IsRunning()) {
+            return;
+        }
+
+        EnsureTaskQueueStarted();
+        auto task = std::make_shared<TaskHandler<void>>([notifier = notifier_, message]() { notifier(message); });
+        task_queue_->EnqueueTask(task);
+    }
 
     /**
-     * @brief Check if service is currently running
-     * @return true if service is running, false otherwise
+     * @brief Enqueue async task for business logic
      */
-    virtual bool IsRunning() const = 0;
+    template <typename Func>
+    void EnqueueTask(Func &&func, uint64_t delayUs = 0)
+    {
+        if (!IsRunning()) {
+            return;
+        }
+
+        EnsureTaskQueueStarted();
+        auto task = std::make_shared<TaskHandler<void>>(std::forward<Func>(func));
+        task_queue_->EnqueueTask(task, false, delayUs);
+    }
+
+    /**
+     * @brief Get service name for queue identification
+     * Override this method to provide meaningful service name
+     */
+    virtual std::string GetServiceName() const
+    {
+        return "Service_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+    }
+
+private:
+    /**
+     * @brief Lazy initialization of task queue
+     */
+    void EnsureTaskQueueStarted()
+    {
+        if (!task_queue_) {
+            task_queue_ = std::make_unique<TaskQueue>(GetServiceName() + "_Queue");
+            task_queue_->Start();
+        }
+    }
+
+    /**
+     * @brief Stop and cleanup task queue
+     */
+    void StopTaskQueue()
+    {
+        if (task_queue_) {
+            task_queue_->Stop();
+            task_queue_.reset();
+        }
+    }
+
+    ServiceEventHandler notifier_;
+    std::unique_ptr<TaskQueue> task_queue_;
 };
 
 //==============================================================================
@@ -103,7 +150,7 @@ class ServiceManager : public Singleton<ServiceManager> {
     friend class Singleton<ServiceManager>;
 
 public:
-    ~ServiceManager() override = default;
+    ~ServiceManager();
 
     template <typename T>
     bool Register(const std::string &descriptor, ServiceDelegator<T> *delegator);
@@ -119,12 +166,20 @@ public:
     void StopAllServices();
     bool IsServiceRunning(const std::string &descriptor) const;
 
+    // Service event callback management
+    void SetEventCallback(const ServiceEventHandler &callback);
+
 protected:
-    ServiceManager() = default;
+    ServiceManager();
 
 private:
     mutable std::mutex mutex_;
     std::unordered_map<std::string, std::unique_ptr<ServiceInfo>> services_;
+    ServiceEventHandler event_callback_;
+    std::mutex callback_mutex_;
+
+    // Internal notification method
+    void NotifyMainService(const ServiceMessage &message);
 };
 
 //==============================================================================
@@ -156,7 +211,11 @@ bool ServiceManager::Register(const std::string &descriptor, ServiceDelegator<T>
         return false; // Already registered
     }
 
-    auto creator = []() -> std::unique_ptr<ServiceBase> { return std::make_unique<T>(); };
+    auto creator = [this]() -> std::unique_ptr<ServiceBase> {
+        auto service = std::make_unique<T>();
+        service->SetServiceNotifier([this](const ServiceMessage &msg) { this->NotifyMainService(msg); });
+        return service;
+    };
 
     services_[descriptor] = std::make_unique<ServiceInfo>(descriptor, creator, delegator);
     LOG_DEBUG("Service registered: %s", descriptor.c_str());
