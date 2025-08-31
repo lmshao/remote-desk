@@ -41,9 +41,6 @@ public:
 
     // MediaProcessor interface implementation
     bool Initialize() override;
-    bool Start() override;
-    void Stop() override;
-    bool IsRunning() const override;
     void OnFrame(std::shared_ptr<Frame> frame) override;
 
 private:
@@ -57,9 +54,47 @@ private:
      */
     size_t CalculateOutputFrameSize(uint32_t width, uint32_t height, FrameFormat format);
 
+    /**
+     * @brief Check if format is supported by software converter
+     */
+    bool IsFormatSupported(FrameFormat format);
+
+    /**
+     * @brief Format-specific conversion methods
+     */
+    bool ConvertFromBGRA32(std::shared_ptr<Frame> input, std::shared_ptr<Frame> output);
+    bool ConvertFromRGBA32(std::shared_ptr<Frame> input, std::shared_ptr<Frame> output);
+    bool ConvertFromRGB24(std::shared_ptr<Frame> input, std::shared_ptr<Frame> output);
+    bool ConvertFromBGR24(std::shared_ptr<Frame> input, std::shared_ptr<Frame> output);
+
+    /**
+     * @brief Low-level conversion functions
+     */
+    bool ConvertBGRA32ToRGBA32(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertRGBA32ToBGRA32(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertRGB24ToBGR24(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertBGR24ToRGB24(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+
+    // 24-bit to 32-bit conversions
+    bool ConvertRGB24ToRGBA32(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertRGB24ToBGRA32(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertBGR24ToRGBA32(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertBGR24ToBGRA32(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+
+    // 32-bit to 24-bit conversions
+    bool ConvertBGRA32ToRGB24(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertBGRA32ToBGR24(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertRGBA32ToRGB24(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertRGBA32ToBGR24(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+
+    // RGB to YUV conversions (simplified)
+    bool ConvertBGRA32ToI420(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertRGBA32ToI420(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertRGB24ToI420(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+    bool ConvertBGR24ToI420(const uint8_t *src, uint8_t *dst, uint32_t width, uint32_t height);
+
 private:
     PixelFormatConverterConfig config_;
-    std::atomic<bool> running_{false};
     mutable std::mutex mutex_;
 };
 

@@ -6,3 +6,6 @@ cmake-build-debug-remote-host/
 *.o
 build/
 bak/
+
+# FFmpeg Windows libraries (downloaded dependencies)
+ffmpeg/

@@ -23,11 +23,21 @@ public:
     MediaProcessor() = default;
     ~MediaProcessor() override = default;
 
-    // Lifecycle management
+    // Lifecycle management - Processors are passive and data-driven
+    // They only need initialization, no active start/stop required
     virtual bool Initialize() = 0;
-    virtual bool Start() = 0;
-    virtual void Stop() = 0;
-    virtual bool IsRunning() const = 0;
+
+    // Optional: Some processors might need cleanup (e.g., releasing resources)
+    virtual void Cleanup() {}
+
+    // Status query - indicates if processor is ready to process frames
+    virtual bool IsReady() const { return true; }
+
+    // Legacy interface for backward compatibility with Pipeline
+    // These are no-ops for pure data-driven processors
+    virtual bool Start() { return true; }                // Always succeed - processor is passive
+    virtual void Stop() {}                               // No-op - processor is passive
+    virtual bool IsRunning() const { return IsReady(); } // Delegate to IsReady()
 
     // INode implementation
     uint64_t GetId() const override { return reinterpret_cast<uint64_t>(this); }

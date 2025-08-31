@@ -61,12 +61,42 @@ public:
         return true;
     }
 
-    bool Start() { return source_->Start() && sink_->Start(); }
+    bool Start()
+    {
+        // Start all processors first
+        for (auto &processor : processors_) {
+            if (processor && !processor->Start()) {
+                return false;
+            }
+        }
+
+        // Start sink
+        if (sink_ && !sink_->Start()) {
+            return false;
+        }
+
+        // Start source last
+        return source_ && source_->Start();
+    }
 
     void Stop()
     {
-        source_->Stop();
-        sink_->Stop();
+        // Stop source first
+        if (source_) {
+            source_->Stop();
+        }
+
+        // Stop all processors
+        for (auto &processor : processors_) {
+            if (processor) {
+                processor->Stop();
+            }
+        }
+
+        // Stop sink last
+        if (sink_) {
+            sink_->Stop();
+        }
     }
 
     bool IsConnected() const { return source_ && sink_; }

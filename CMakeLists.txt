@@ -215,17 +215,53 @@ message(STATUS "C++ flags for ${CMAKE_BUILD_TYPE}: ${CMAKE_CXX_FLAGS_${CMAKE_BUI
 find_package(Threads REQUIRED)
 
 # Find FFmpeg libraries for video encoding
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(FFMPEG QUIET
-        libavcodec
-        libavformat  
-        libavutil
-        libswscale
-    )
+set(FFMPEG_FOUND FALSE)
+
+# First, try to find local FFmpeg directory (for Windows development)
+set(LOCAL_FFMPEG_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg")
+if(EXISTS "${LOCAL_FFMPEG_DIR}/include" AND EXISTS "${LOCAL_FFMPEG_DIR}/lib")
+    message(STATUS "Found local FFmpeg directory: ${LOCAL_FFMPEG_DIR}")
+    
+    # Set up include directories
+    set(FFMPEG_INCLUDE_DIRS "${LOCAL_FFMPEG_DIR}/include")
+    
+    # Find libraries in local directory
+    find_library(AVCODEC_LIBRARY avcodec PATHS "${LOCAL_FFMPEG_DIR}/lib" NO_DEFAULT_PATH)
+    find_library(AVFORMAT_LIBRARY avformat PATHS "${LOCAL_FFMPEG_DIR}/lib" NO_DEFAULT_PATH)
+    find_library(AVUTIL_LIBRARY avutil PATHS "${LOCAL_FFMPEG_DIR}/lib" NO_DEFAULT_PATH)
+    find_library(SWSCALE_LIBRARY swscale PATHS "${LOCAL_FFMPEG_DIR}/lib" NO_DEFAULT_PATH)
+    
+    if(AVCODEC_LIBRARY AND AVFORMAT_LIBRARY AND AVUTIL_LIBRARY AND SWSCALE_LIBRARY)
+        set(FFMPEG_LIBRARIES ${AVCODEC_LIBRARY} ${AVFORMAT_LIBRARY} ${AVUTIL_LIBRARY} ${SWSCALE_LIBRARY})
+        set(FFMPEG_FOUND TRUE)
+        message(STATUS "Using local FFmpeg libraries")
+        
+        # On Windows, also copy DLLs to output directory at build time
+        if(WIN32 AND EXISTS "${LOCAL_FFMPEG_DIR}/dll")
+            file(GLOB FFMPEG_DLLS "${LOCAL_FFMPEG_DIR}/dll/*.dll")
+            list(LENGTH FFMPEG_DLLS FFMPEG_DLLS_COUNT)
+            message(STATUS "Found ${FFMPEG_DLLS_COUNT} FFmpeg DLLs to copy")
+        endif()
+    endif()
 endif()
 
-# If pkg-config fails, try to find FFmpeg manually
+# If local FFmpeg not found, try system installation via pkg-config (Linux)
+if(NOT FFMPEG_FOUND)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(FFMPEG QUIET
+            libavcodec
+            libavformat  
+            libavutil
+            libswscale
+        )
+        if(FFMPEG_FOUND)
+            message(STATUS "Found FFmpeg via pkg-config")
+        endif()
+    endif()
+endif()
+
+# If pkg-config fails, try to find FFmpeg manually in system paths
 if(NOT FFMPEG_FOUND)
     find_path(AVCODEC_INCLUDE_DIR libavcodec/avcodec.h)
     find_library(AVCODEC_LIBRARY avcodec)
@@ -243,13 +279,28 @@ if(NOT FFMPEG_FOUND)
         set(FFMPEG_FOUND TRUE)
         set(FFMPEG_INCLUDE_DIRS ${AVCODEC_INCLUDE_DIR} ${AVFORMAT_INCLUDE_DIR} ${AVUTIL_INCLUDE_DIR} ${SWSCALE_INCLUDE_DIR})
         set(FFMPEG_LIBRARIES ${AVCODEC_LIBRARY} ${AVFORMAT_LIBRARY} ${AVUTIL_LIBRARY} ${SWSCALE_LIBRARY})
-        message(STATUS "Found FFmpeg libraries manually")
-    else()
-        message(WARNING "FFmpeg libraries not found. Video encoding features will be disabled.")
-        message(STATUS "To install FFmpeg on Windows: Download from https://www.gyan.dev/ffmpeg/builds/")
-        message(STATUS "To install FFmpeg on Ubuntu/Debian: sudo apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev")
-        message(STATUS "To install FFmpeg on CentOS/RHEL: sudo yum install ffmpeg-devel")
+        message(STATUS "Found FFmpeg libraries in system paths")
     endif()
+endif()
+
+# Show appropriate error message if FFmpeg not found
+if(NOT FFMPEG_FOUND)
+    message(WARNING "FFmpeg libraries not found. Video encoding features will be disabled.")
+    message(STATUS "")
+    message(STATUS "========== FFmpeg Installation Instructions ==========")
+    if(WIN32)
+        message(STATUS "For Windows development:")
+        message(STATUS "  1. Run: .\\scripts\\download_ffmpeg_windows.ps1")
+        message(STATUS "  2. Or manually download from: https://www.gyan.dev/ffmpeg/builds/")
+        message(STATUS "  3. Extract to: ${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/")
+    else()
+        message(STATUS "For Linux development:")
+        message(STATUS "  Ubuntu/Debian: sudo apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev")
+        message(STATUS "  CentOS/RHEL:   sudo yum install ffmpeg-devel")
+        message(STATUS "  Fedora:        sudo dnf install ffmpeg-devel")
+    endif()
+    message(STATUS "======================================================")
+    message(STATUS "")
 endif()
 
 if(FFMPEG_FOUND)

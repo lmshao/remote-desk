@@ -57,7 +57,7 @@ public:
         else if (frame->format == FrameFormat::RGBA32)
             format_name = "RGBA32";
 
-        printf("\rFrame %d (%dx%d) Format:%s - %llds elapsed, %zu MB", frame_count_, frame->video_info.width,
+        printf("\rFrame %d (%dx%d) Format:%s - %llds elapsed, %zu MB\n", frame_count_, frame->video_info.width,
                frame->video_info.height, format_name, elapsed, total_bytes_ / (1024 * 1024));
         fflush(stdout);
 
